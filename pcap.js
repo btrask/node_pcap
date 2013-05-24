@@ -8,6 +8,8 @@ var util       = require('util'),
     url        = require('url'),
     IOWatcher  = require("socketwatcher");
 
+var unpack = require("./lib/unpack");
+
 function Pcap() {
     this.opened = false;
     this.fd = null;
@@ -104,108 +106,12 @@ exports.createOfflineSession = function (path, filter) {
 //
 // Decoding functions
 //
-function lpad(str, len) {
-    while (str.length < len) {
-        str = "0" + str;
-    }
-    return str;
-}
 
 function dump_bytes(raw_packet, offset) {
     for (var i = offset; i < raw_packet.pcap_header.caplen ; i += 1) {
         console.log(i + ": " + raw_packet[i]);
     }
 }
-
-var unpack = {
-    ethernet_addr: function (raw_packet, offset) {
-        return [
-            lpad(raw_packet[offset].toString(16), 2),
-            lpad(raw_packet[offset + 1].toString(16), 2),
-            lpad(raw_packet[offset + 2].toString(16), 2),
-            lpad(raw_packet[offset + 3].toString(16), 2),
-            lpad(raw_packet[offset + 4].toString(16), 2),
-            lpad(raw_packet[offset + 5].toString(16), 2)
-        ].join(":");
-    },
-    sll_addr: function (raw_packet, offset, len) {
-        var res = [], i;
-        for (i=0; i<len; i++){
-            res.push(lpad(raw_packet[offset+i].toString(16), 2));
-        }
-
-        return res.join(":");
-    },
-    uint16: function (raw_packet, offset) {
-        return ((raw_packet[offset] * 256) + raw_packet[offset + 1]);
-    },
-    uint16_be: function (raw_packet, offset) {
-        return ((raw_packet[offset+1] * 256) + raw_packet[offset]);
-    },
-    uint32: function (raw_packet, offset) {
-        return (
-            (raw_packet[offset] * 16777216) +
-            (raw_packet[offset + 1] * 65536) +
-            (raw_packet[offset + 2] * 256) +
-            raw_packet[offset + 3]
-        );
-    },
-    uint64: function (raw_packet, offset) {
-        return (
-            (raw_packet[offset] * 72057594037927936) +
-            (raw_packet[offset + 1] * 281474976710656) +
-            (raw_packet[offset + 2] * 1099511627776) +
-            (raw_packet[offset + 3] * 4294967296) +
-            (raw_packet[offset + 4] * 16777216) +
-            (raw_packet[offset + 5] * 65536) +
-            (raw_packet[offset + 6] * 256) +
-            raw_packet[offset + 7]
-        );
-    },
-    ipv4_addr: function (raw_packet, offset) {
-        return [
-            raw_packet[offset],
-            raw_packet[offset + 1],
-            raw_packet[offset + 2],
-            raw_packet[offset + 3]
-        ].join('.');
-    },
-    ipv6_addr: function (raw_packet, offset) {
-        var i;
-        var ret = '';
-        var octets = [];
-        for (i=offset; i<offset+16; i+=2) {
-        octets.push(unpack.uint16(raw_packet,i).toString(16));
-        }
-        var curr_start, curr_len;
-        var max_start, max_len;
-        for(i = 0; i < 8; i++){
-            if(octets[i] == "0"){
-                if(curr_start === undefined){
-                    curr_len = 1;
-                    curr_start = i;
-                }else{
-                    curr_len++;
-                    if(!max_start || curr_len > max_len){
-                        max_start = curr_start;
-                        max_len = curr_len;
-                    }
-                }
-            }else{
-                curr_start = undefined;
-            }
-        }
-
-        if(max_start !== undefined){
-            var tosplice = max_start === 0 || (max_start + max_len > 7) ? ":" : "";
-            octets.splice(max_start, max_len,tosplice);
-            if(max_len == 8){octets.push("");}
-        }
-        ret = octets.join(":");
-        return ret;
-    }
-};
-exports.unpack = unpack;
 
 var decode = {}; // convert raw packet data into JavaScript objects with friendly names
 decode.packet = function (raw_packet) {
@@ -227,6 +133,11 @@ decode.packet = function (raw_packet) {
         break;
     case "LINKTYPE_LINUX_SLL":
         packet.link = decode.linux_sll(raw_packet, 0);
+        break;
+    case "LINKTYPE_USB":
+    case "LINKTYPE_USB_LINUX":
+    case "LINKTYPE_USB_LINUX_MMAPPED":
+        packet.link = decode.usb(raw_packet, 0, packet.link_type);
         break;
     default:
         console.log("pcap.js: decode.packet() - Don't yet know how to decode link type " + raw_packet.pcap_header.link_type);
@@ -1282,6 +1193,11 @@ print.packet = function (packet_to_print) {
     case "LINKTYPE_LINUX_SSL":
         ret += print.slltype(packet_to_print);
         break;
+    case "LINKTYPE_USB":
+    case "LINKTYPE_USB_LINUX":
+    case "LINKTYPE_USB_LINUX_MMAPPED":
+        ret += print.usb(packet_to_print, packet_to_print.link_type);
+        break;
     default:
         console.log("Don't yet know how to print link_type " + packet_to_print.link_type);
     }
@@ -1801,3 +1717,7 @@ TCP_tracker.prototype.track_packet = function (packet) {
 
     return session;
 };
+
+exports.usb = require("./lib/usb");
+decode.usb = exports.usb.decode;
+print.usb = exports.usb.print;

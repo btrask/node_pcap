@@ -241,6 +241,15 @@ Open(bool live, const Arguments& args)
     case DLT_LINUX_SLL: // "Linux cooked capture"
         ret = String::New("LINKTYPE_LINUX_SLL");
         break;
+    case DLT_USB:
+        ret = String::New("LINKTYPE_USB");
+        break;
+    case DLT_USB_LINUX:
+        ret = String::New("LINKTYPE_USB_LINUX");
+        break;
+    case DLT_USB_LINUX_MMAPPED:
+        ret = String::New("LINKTYPE_USB_LINUX_MMAPPED");
+        break;
     default:
         snprintf(errbuf, PCAP_ERRBUF_SIZE, "Unknown linktype %d", link_type);
         ret = String::New(errbuf);
