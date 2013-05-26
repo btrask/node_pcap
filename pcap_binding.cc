@@ -13,6 +13,10 @@
 #include <sys/ioctl.h>
 #include <arpa/inet.h>
 
+#ifndef DLT_USB_LINUX_MMAPPED // Missing on OS X 10.6.8
+#define DLT_USB_LINUX_MMAPPED 220
+#endif
+
 using namespace v8;
 using namespace node;
 
